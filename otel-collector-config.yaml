@@ -1,0 +1,31 @@
+# OpenTelemetry Collector Configuration for Tracenixa
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 256
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+
+exporters:
+  otlphttp/tracenixa:
+    endpoint: "http://backend:8080/v1/traces"
+    encoding: json
+    headers:
+      X-API-Key: "trx_live_demo1234567890abcdef12345678"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/tracenixa]

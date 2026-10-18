@@ -1,0 +1,27 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:tracenixa}
+    username: ${DB_USER:tracenixa}
+    password: ${DB_PASSWORD:tracenixa_secret_password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: public
+
+  flyway:
+    enabled: true
+    schemas: public
+    locations: classpath:db/migration
+
+tracenixa:
+  async:
+    use-kafka: ${USE_KAFKA:true}
