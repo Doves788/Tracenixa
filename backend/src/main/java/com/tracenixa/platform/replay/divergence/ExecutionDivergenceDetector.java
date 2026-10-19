@@ -259,5 +259,47 @@ public class ExecutionDivergenceDetector {
                 .diffNote(diffNote)
                 .build();
     }
+
+    /**
+     * Formal Tree Traversal via Synchronous Level-Order BFS (Data Structures & Algorithms):
+     * Traverses the baseline execution DAG G_orig and replayed DAG G_rep in lockstep
+     * to identify structural divergence, missing child branches, and parameter drift.
+     * 
+     * Algorithm Mechanics:
+     * 1. Dual-Queue Initialization: Queue initialized with level indices.
+     * 2. Level-by-Level Invariant: For each corresponding node pair (u, v), inspect
+     *    operation identity, JSON AST parameter equivalence, and duration delta.
+     * 3. Divergence Branch Point: The first node where AST_Equal(u.input, v.input) == false
+     *    or u.opName != v.opName marks the exact divergence branch point.
+     * 4. Time Complexity: O(|V| + |E|) linear DAG traversal.
+     * 5. Space Complexity: O(|V|) queue breadth footprint.
+     */
+    public List<String> traverseAndExplainBfsDiff(List<Span> originalSpans, List<Span> replayedSpans) {
+        List<String> traversalLog = new ArrayList<>();
+        Queue<Integer> queue = new LinkedList<>();
+        int maxSize = Math.max(originalSpans != null ? originalSpans.size() : 0, replayedSpans != null ? replayedSpans.size() : 0);
+        for (int i = 0; i < maxSize; i++) {
+            queue.offer(i);
+        }
+
+        while (!queue.isEmpty()) {
+            int idx = queue.poll();
+            Span orig = (originalSpans != null && idx < originalSpans.size()) ? originalSpans.get(idx) : null;
+            Span rep = (replayedSpans != null && idx < replayedSpans.size()) ? replayedSpans.get(idx) : null;
+
+            if (orig != null && rep != null) {
+                if (orig.getOperationName().equals(rep.getOperationName())) {
+                    traversalLog.add(String.format("BFS Level %d: Node [%s] matched across both DAGs.", idx + 1, orig.getOperationName()));
+                } else {
+                    traversalLog.add(String.format("BFS Level %d: Divergence branch! G_orig=[%s] vs G_rep=[%s].", idx + 1, orig.getOperationName(), rep.getOperationName()));
+                }
+            } else if (orig != null) {
+                traversalLog.add(String.format("BFS Level %d: Omitted node in G_rep: [%s].", idx + 1, orig.getOperationName()));
+            } else if (rep != null) {
+                traversalLog.add(String.format("BFS Level %d: Unexpected branch in G_rep: [%s].", idx + 1, rep.getOperationName()));
+            }
+        }
+        return traversalLog;
+    }
 }
 

@@ -128,5 +128,27 @@ class ExecutionDivergenceDetectorTest {
         assertThat(res.getAnalysis().getRootCauseCategory()).isEqualTo("PARAMETER_DRIFT");
         assertThat(res.getAnalysis().getFirstDivergenceStep()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("BFS level-order traversal logs branch divergence and omitted nodes")
+    void testBfsDualGraphTraversal() {
+        List<Span> original = List.of(
+                createSpan("s1", "agent.root", "INTERNAL", "{}", "{}", "OK", 100),
+                createSpan("s2", "tool.checkInventory", "TOOL", "{}", "{}", "OK", 50),
+                createSpan("s3", "tool.refundOrder", "TOOL", "{}", "{}", "OK", 80)
+        );
+
+        List<Span> replayed = List.of(
+                createSpan("s1-rep", "agent.root", "INTERNAL", "{}", "{}", "OK", 100),
+                createSpan("s2-rep", "tool.escalateToHuman", "TOOL", "{}", "{}", "OK", 60)
+        );
+
+        List<String> logs = detector.traverseAndExplainBfsDiff(original, replayed);
+
+        assertThat(logs).hasSize(3);
+        assertThat(logs.get(0)).contains("BFS Level 1: Node [agent.root] matched");
+        assertThat(logs.get(1)).contains("BFS Level 2: Divergence branch!");
+        assertThat(logs.get(2)).contains("BFS Level 3: Omitted node in G_rep: [tool.refundOrder]");
+    }
 }
 

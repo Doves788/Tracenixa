@@ -13,8 +13,10 @@ import {
   ArrowRight,
   RefreshCw,
   XCircle,
-  Plus
+  Plus,
+  GitBranch
 } from 'lucide-react';
+import { DivergenceGraphView } from '../components/DivergenceGraphView';
 
 interface ReplayPageProps {
   initialTraceId?: string | null;
@@ -338,6 +340,15 @@ export const ReplayPage: React.FC<ReplayPageProps> = ({ initialTraceId }) => {
                   </div>
                 )}
               </div>
+
+              {/* Interactive Visual Call-Graph (DAG) Divergence Tree */}
+              {replayDetail.stepComparisons.length > 0 && (
+                <DivergenceGraphView
+                  stepComparisons={replayDetail.stepComparisons}
+                  divergenceAnalysis={replayDetail.divergenceAnalysis}
+                  replayMode={replayDetail.session.replayMode}
+                />
+              )}
 
               {/* Step-by-Step Side-by-Side Diff Table */}
               <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
