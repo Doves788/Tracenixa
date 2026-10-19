@@ -97,10 +97,19 @@ flowchart TD
 
 ## 2. User Interface & Interactive Dashboards
 
-Tracenixa features a dark-themed developer console engineered for high-density telemetry inspection and rapid incident triage.
+Tracenixa features a high-density, dark-themed developer console engineered for microsecond-level telemetry inspection, execution graph diffing, and automated LLM regression triage.
 
-### 2.1 Trace Explorer & Hierarchical Span Gantt Timeline
+### 2.1 System Overview & Real-Time Telemetry
+Live telemetry ingestion, P50/P95 latency percentiles, operational cost tracking, and model distribution across LLM architectures:
+
+![Tracenixa System Overview](docs/screenshots/overview.png)
+
+---
+
+### 2.2 Trace Explorer & Hierarchical Span Gantt Timeline
 Visualizes nested tool-calling trees, token counts, and microsecond-level latency waterfalls across distributed agent executions:
+
+![Tracenixa Trace Explorer and Span Gantt](docs/screenshots/trace_explorer.png)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -116,8 +125,12 @@ Visualizes nested tool-calling trees, token counts, and microsecond-level latenc
 └────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Replay Studio: Side-by-Side Sandbox Comparison
-Isolates agent executions in a sandbox to inject network faults, test bounded retries, and verify state recovery side-by-side with zero external side effects:
+---
+
+### 2.3 Fault Injection & Agent Chaos Playground
+Injects deterministic network delays, tool timeouts, and rate limits into agent execution graphs to verify bounded retries and idempotency policies with zero external side effects:
+
+![Tracenixa Fault Injection Playground](docs/screenshots/fault_playground.png)
 
 ```
 ┌──────────────────────────────────────────────────┬──────────────────────────────────────────────────┐
@@ -133,7 +146,23 @@ Isolates agent executions in a sandbox to inject network faults, test bounded re
 └──────────────────────────────────────────────────┴──────────────────────────────────────────────────┘
 ```
 
-### 2.3 Execution Divergence Analysis & Root-Cause Pinpointing
+---
+
+### 2.4 AI Evaluation & LLM-as-a-Judge Benchmarks
+Deterministic assertions for tool selection combined with LLM judge scoring for faithfulness, answer relevancy, and hallucination bounds:
+
+![Tracenixa AI Evaluation and LLM as a Judge](docs/screenshots/evaluations.png)
+
+---
+
+### 2.5 Analytics & Latency Distribution Monitoring
+P50/P95 tail latency percentiles, histogram runtime distribution, and 7-day rolling operational cost curves:
+
+![Tracenixa Analytics and Cost Monitoring](docs/screenshots/analytics_costs.png)
+
+---
+
+### 2.6 Execution Divergence Analysis & Root-Cause Pinpointing
 Automated detection of tool calling sequence drift, argument deviations, and state corruption:
 
 ```
