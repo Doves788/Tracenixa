@@ -86,7 +86,7 @@ public class AnalyticsService {
             long tokens = r[1] != null ? ((Number) r[1]).longValue() : 0L;
             long count = r[2] != null ? ((Number) r[2]).longValue() : 0L;
 
-            double cost = (tokens / 1000.0) * ((defaultPromptRate + defaultCompletionRate) / 2.0);
+            double cost = calculateCostForModel(model, tokens);
 
             list.add(ModelCostBreakdownDto.builder()
                     .modelName(model)
@@ -210,5 +210,31 @@ public class AnalyticsService {
         }
 
         return trends;
+    }
+
+    private double calculateCostForModel(String model, long tokens) {
+        String lower = model.toLowerCase();
+        double promptRatePer1k;
+        double completionRatePer1k;
+        if (lower.contains("gpt-4o-mini")) {
+            promptRatePer1k = 0.00015;
+            completionRatePer1k = 0.0006;
+        } else if (lower.contains("gpt-4o") || lower.contains("gpt-4")) {
+            promptRatePer1k = 0.005;
+            completionRatePer1k = 0.015;
+        } else if (lower.contains("claude-3-5") || lower.contains("claude-3")) {
+            promptRatePer1k = 0.003;
+            completionRatePer1k = 0.015;
+        } else if (lower.contains("deepseek")) {
+            promptRatePer1k = 0.00014;
+            completionRatePer1k = 0.00028;
+        } else if (lower.contains("llama") || lower.contains("ollama")) {
+            promptRatePer1k = 0.0002;
+            completionRatePer1k = 0.0002;
+        } else {
+            promptRatePer1k = defaultPromptRate;
+            completionRatePer1k = defaultCompletionRate;
+        }
+        return (tokens / 1000.0) * ((promptRatePer1k + completionRatePer1k) / 2.0);
     }
 }

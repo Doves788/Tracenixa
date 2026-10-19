@@ -29,6 +29,8 @@ public class EventPublisher {
     public static final String TOPIC_TRACES = "tracenixa.traces.received";
     public static final String TOPIC_REPLAYS = "tracenixa.replays.requested";
     public static final String TOPIC_EVALUATIONS = "tracenixa.evaluations.requested";
+    public static final String TOPIC_TELEMETRY_DLQ = "tracenixa.telemetry.dlq";
+    public static final String TOPIC_REPLAYS_DLQ = "tracenixa.replays.dlq";
 
     public void publishTraceReceived(String traceId) {
         TraceReceivedEvent event = TraceReceivedEvent.builder()
@@ -83,6 +85,14 @@ public class EventPublisher {
         } catch (Exception e) {
             log.warn("Failed to publish event to Kafka, falling back to local bus: {}", e.getMessage());
             localEventPublisher.publishEvent(event);
+        }
+    }
+
+    public void publishToDlq(String dlqTopic, String rawPayload, String errorMessage) {
+        log.error("Routing poisoned message to Dead Letter Queue [{}]. Reason: {}", dlqTopic, errorMessage);
+        KafkaTemplate<String, String> kafkaTemplate = kafkaTemplateProvider.getIfAvailable();
+        if (useKafka && kafkaTemplate != null) {
+            kafkaTemplate.send(dlqTopic, UUID.randomUUID().toString(), rawPayload);
         }
     }
 }

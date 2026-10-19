@@ -23,6 +23,7 @@ public class EventConsumer {
 
     private final ReplayEngineService replayEngineService;
     private final EvaluationService evaluationService;
+    private final EventPublisher eventPublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // In-memory idempotency deduplication cache
@@ -36,7 +37,8 @@ public class EventConsumer {
             TraceReceivedEvent event = objectMapper.readValue(message, TraceReceivedEvent.class);
             handleTraceReceived(event);
         } catch (Exception e) {
-            log.error("Kafka error processing TraceReceivedEvent: {}", e.getMessage(), e);
+            log.error("Kafka error processing TraceReceivedEvent, routing to DLQ: {}", e.getMessage(), e);
+            eventPublisher.publishToDlq(EventPublisher.TOPIC_TELEMETRY_DLQ, message, e.getMessage());
         }
     }
 
@@ -46,7 +48,8 @@ public class EventConsumer {
             ReplayRequestedEvent event = objectMapper.readValue(message, ReplayRequestedEvent.class);
             handleReplayRequested(event);
         } catch (Exception e) {
-            log.error("Kafka error processing ReplayRequestedEvent: {}", e.getMessage(), e);
+            log.error("Kafka error processing ReplayRequestedEvent, routing to DLQ: {}", e.getMessage(), e);
+            eventPublisher.publishToDlq(EventPublisher.TOPIC_REPLAYS_DLQ, message, e.getMessage());
         }
     }
 
@@ -56,7 +59,8 @@ public class EventConsumer {
             EvaluationRequestedEvent event = objectMapper.readValue(message, EvaluationRequestedEvent.class);
             handleEvaluationRequested(event);
         } catch (Exception e) {
-            log.error("Kafka error processing EvaluationRequestedEvent: {}", e.getMessage(), e);
+            log.error("Kafka error processing EvaluationRequestedEvent, routing to DLQ: {}", e.getMessage(), e);
+            eventPublisher.publishToDlq(EventPublisher.TOPIC_REPLAYS_DLQ, message, e.getMessage());
         }
     }
 

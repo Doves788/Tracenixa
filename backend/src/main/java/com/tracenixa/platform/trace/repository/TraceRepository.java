@@ -55,4 +55,8 @@ public interface TraceRepository extends JpaRepository<Trace, String> {
     List<Trace> findTop10ByProjectIdAndStatusOrderByStartTimeDesc(String projectId, String status);
 
     List<Trace> findByProjectIdAndStartTimeBetweenOrderByStartTimeAsc(String projectId, Instant start, Instant end);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM Trace t WHERE t.startTime < :cutoff")
+    int deleteTracesOlderThan(@Param("cutoff") Instant cutoff);
 }
