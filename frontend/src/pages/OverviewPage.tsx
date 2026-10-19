@@ -200,6 +200,10 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigateToTrace })
                     <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#14b8a6" stopOpacity={0.0} />
                   </linearGradient>
+                  <linearGradient id="latencyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickFormatter={(v) => v.slice(5)} />
@@ -208,7 +212,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigateToTrace })
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
                 />
                 <Area type="monotone" dataKey="executions" stroke="#14b8a6" strokeWidth={2} fillOpacity={1} fill="url(#execGradient)" />
-                <Area type="monotone" dataKey="avgLatencyMs" stroke="#06b6d4" strokeWidth={2} fillOpacity={0} />
+                <Area type="monotone" dataKey="avgLatencyMs" stroke="#06b6d4" strokeWidth={2.5} fillOpacity={1} fill="url(#latencyGradient)" dot={{ r: 3, fill: '#06b6d4' }} activeDot={{ r: 5 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
