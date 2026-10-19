@@ -178,6 +178,13 @@ chmod +x scripts/ci-eval-gate.sh
 .\scripts\ci-eval-gate.ps1
 ```
 
+### 3.3 Financial Compliance & Algorithmic Auditability (Fintech & HFT)
+In banking, quantitative trading, and fintech platforms, deploying autonomous AI agents to execute financial transactions introduces severe regulatory risks. Tracenixa provides enterprise compliance by design:
+* **Regulatory Record-Keeping (FINRA Rule 4511, SEC 17a-4, EU AI Act Article 14):** Every autonomous reasoning step, prompt context, tool input argument, and execution timestamp is preserved immutably in time-series partitioned audit trails.
+* **Deterministic Incident Reconstruction:** When a transaction or payout is disputed, compliance and risk teams can reconstruct the agent's exact cognitive state in an isolated sandbox with zero side effects—verifying whether the agent obeyed compliance guidelines without re-triggering payment gateways.
+* **Idempotency & Double-Debit Protection:** Tool invocations use cryptographic idempotency keys, ensuring that network retries or transient microservice timeouts can never trigger duplicate refunds, duplicate trades, or repeated debits.
+* **Algorithmic Drift Detection as Risk Management:** Execution divergence tracking alerts risk teams if an agent's reasoning drifts from approved financial policy rules before transactions settle.
+
 ---
 
 ## 4. Technology Stack & Exact Versions
