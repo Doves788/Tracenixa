@@ -301,5 +301,168 @@ public class ExecutionDivergenceDetector {
         }
         return traversalLog;
     }
+
+    public enum AlignmentType {
+        MATCH,
+        MUTATION,
+        INSERTION,
+        DELETION
+    }
+
+    @Getter
+    @Builder
+    public static class AlignedSpanStep {
+        private Span originalSpan;
+        private Span replayedSpan;
+        private AlignmentType alignmentType;
+        private String explanation;
+    }
+
+    @Getter
+    @Builder
+    public static class SequenceAlignmentResult {
+        private int globalScore;
+        private List<AlignedSpanStep> alignedSteps;
+        private int matchedCount;
+        private int insertedCount;
+        private int deletedCount;
+        private int mutatedCount;
+        private boolean pathRealigned;
+    }
+
+    /**
+     * Advanced Sequence Alignment Engine (Needleman-Wunsch Dynamic Programming).
+     * Solves the FAANG / High-Frequency Agent Traversal Edge Case:
+     * When non-deterministic LLMs inject an intermediate thought / self-correction step
+     * (e.g. model.self_correction or retry span) before returning to the correct tool call path,
+     * naive positional BFS experiences a phase-shift error, falsely flagging all subsequent
+     * steps as diverged.
+     *
+     * Mathematical Formulation:
+     * D(i, j) = max(
+     *     D(i-1, j-1) + S(u_i, v_j),  // Match (+2) or Substitution (-1)
+     *     D(i-1, j)   + GAP_PENALTY,  // Deletion (omitted in replay, -1)
+     *     D(i, j-1)   + GAP_PENALTY   // Insertion (e.g. self-correction injected, -1)
+     * )
+     *
+     * Backtracking isolates the intermediate insertion with an O(1) gap penalty,
+     * realigning subsequent tool calls with 100% path parity.
+     *
+     * Complexity:
+     * - Time: O(M * N) dynamic programming matrix calculation.
+     * - Space: O(M * N) score table with backtracking trace.
+     */
+    public SequenceAlignmentResult alignSequencesNeedlemanWunsch(List<Span> originalSpans, List<Span> replayedSpans) {
+        int m = originalSpans != null ? originalSpans.size() : 0;
+        int n = replayedSpans != null ? replayedSpans.size() : 0;
+
+        int MATCH_SCORE = 2;
+        int MISMATCH_PENALTY = -1;
+        int GAP_PENALTY = -1;
+
+        int[][] dp = new int[m + 1][n + 1];
+        for (int i = 0; i <= m; i++) {
+            dp[i][0] = i * GAP_PENALTY;
+        }
+        for (int j = 0; j <= n; j++) {
+            dp[0][j] = j * GAP_PENALTY;
+        }
+
+        for (int i = 1; i <= m; i++) {
+            for (int j = 1; j <= n; j++) {
+                Span orig = originalSpans.get(i - 1);
+                Span rep = replayedSpans.get(j - 1);
+                boolean match = Objects.equals(orig.getOperationName(), rep.getOperationName());
+                int sim = match ? MATCH_SCORE : MISMATCH_PENALTY;
+
+                int scoreDiag = dp[i - 1][j - 1] + sim;
+                int scoreUp = dp[i - 1][j] + GAP_PENALTY;
+                int scoreLeft = dp[i][j - 1] + GAP_PENALTY;
+
+                dp[i][j] = Math.max(scoreDiag, Math.max(scoreUp, scoreLeft));
+            }
+        }
+
+        // Backtrack from (m, n) to (0, 0)
+        List<AlignedSpanStep> reversed = new ArrayList<>();
+        int i = m;
+        int j = n;
+        int matched = 0;
+        int inserted = 0;
+        int deleted = 0;
+        int mutated = 0;
+
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0) {
+                Span orig = originalSpans.get(i - 1);
+                Span rep = replayedSpans.get(j - 1);
+                boolean match = Objects.equals(orig.getOperationName(), rep.getOperationName());
+                int sim = match ? MATCH_SCORE : MISMATCH_PENALTY;
+
+                if (dp[i][j] == dp[i - 1][j - 1] + sim) {
+                    if (match) {
+                        matched++;
+                        reversed.add(AlignedSpanStep.builder()
+                                .originalSpan(orig)
+                                .replayedSpan(rep)
+                                .alignmentType(AlignmentType.MATCH)
+                                .explanation(String.format("Step [%s] aligned with 100%% operation parity.", orig.getOperationName()))
+                                .build());
+                    } else {
+                        mutated++;
+                        reversed.add(AlignedSpanStep.builder()
+                                .originalSpan(orig)
+                                .replayedSpan(rep)
+                                .alignmentType(AlignmentType.MUTATION)
+                                .explanation(String.format("Operation mutation: expected [%s] vs replayed [%s].", orig.getOperationName(), rep.getOperationName()))
+                                .build());
+                    }
+                    i--;
+                    j--;
+                    continue;
+                }
+            }
+
+            if (j > 0 && dp[i][j] == dp[i][j - 1] + GAP_PENALTY) {
+                // Insertion in replay (e.g. self-correction)
+                Span rep = replayedSpans.get(j - 1);
+                inserted++;
+                reversed.add(AlignedSpanStep.builder()
+                        .originalSpan(null)
+                        .replayedSpan(rep)
+                        .alignmentType(AlignmentType.INSERTION)
+                        .explanation(String.format("Intermediate insertion [%s] isolated via gap penalty (agent self-correction).", rep.getOperationName()))
+                        .build());
+                j--;
+            } else if (i > 0) {
+                // Deletion in replay (omitted step)
+                Span orig = originalSpans.get(i - 1);
+                deleted++;
+                reversed.add(AlignedSpanStep.builder()
+                        .originalSpan(orig)
+                        .replayedSpan(null)
+                        .alignmentType(AlignmentType.DELETION)
+                        .explanation(String.format("Step [%s] omitted during replay execution.", orig.getOperationName()))
+                        .build());
+                i--;
+            } else {
+                break;
+            }
+        }
+
+        Collections.reverse(reversed);
+
+        boolean pathRealigned = (inserted > 0 || deleted > 0) && matched > 0;
+
+        return SequenceAlignmentResult.builder()
+                .globalScore(m > 0 || n > 0 ? dp[m][n] : 0)
+                .alignedSteps(reversed)
+                .matchedCount(matched)
+                .insertedCount(inserted)
+                .deletedCount(deleted)
+                .mutatedCount(mutated)
+                .pathRealigned(pathRealigned)
+                .build();
+    }
 }
 
