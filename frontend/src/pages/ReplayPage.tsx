@@ -202,9 +202,16 @@ export const ReplayPage: React.FC<ReplayPageProps> = ({ initialTraceId }) => {
                       Src: <span className="text-teal-300">{r.sourceTraceId.slice(0, 12)}...</span>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-1">
-                      <span>Orig: {r.originalDurationMs}ms</span>
-                      <span>Replay: {r.replayDurationMs || 0}ms</span>
+                    <div className="flex items-center justify-between text-[10px] font-mono mt-1">
+                      <span className="text-slate-500">Orig: {r.originalDurationMs}ms</span>
+                      {r.similarityScore !== undefined && (
+                        <span className={`font-bold ${
+                          r.similarityScore === 1.0 ? 'text-emerald-400' : r.similarityScore >= 0.8 ? 'text-teal-400' : 'text-amber-400'
+                        }`}>
+                          {Math.round(r.similarityScore * 100)}% Match
+                        </span>
+                      )}
+                      <span className="text-slate-500">Replay: {r.replayDurationMs || 0}ms</span>
                     </div>
                   </div>
                 );
@@ -278,6 +285,51 @@ export const ReplayPage: React.FC<ReplayPageProps> = ({ initialTraceId }) => {
                     <span className="font-bold text-emerald-400">0 (Safe Sandbox)</span>
                   </div>
                 </div>
+
+                {/* Execution Divergence Analysis Banner */}
+                {replayDetail.divergenceAnalysis && (
+                  <div className={`p-4 rounded-xl border font-mono text-xs ${
+                    replayDetail.divergenceAnalysis.severity === 'NONE'
+                      ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
+                      : replayDetail.divergenceAnalysis.severity === 'CRITICAL'
+                      ? 'bg-rose-950/20 border-rose-500/30 text-rose-300'
+                      : 'bg-amber-950/20 border-amber-500/30 text-amber-300'
+                  }`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-white/10">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold uppercase tracking-wider">
+                          {replayDetail.divergenceAnalysis.severity === 'NONE' ? 'Zero Divergence Detected' : 'Execution Divergence Detected'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-black/40 text-[10px] font-bold">
+                          Severity: {replayDetail.divergenceAnalysis.severity}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span>Similarity Score:</span>
+                        <span className="text-white font-bold text-sm">
+                          {Math.round(replayDetail.divergenceAnalysis.similarityScore * 100)}%
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          ({replayDetail.divergenceAnalysis.matchedSteps}/{replayDetail.divergenceAnalysis.totalSteps} steps matched)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-slate-300 mb-1">
+                      <span className="font-bold text-white">Root Cause:</span> [{replayDetail.divergenceAnalysis.rootCauseCategory}] {replayDetail.divergenceAnalysis.explanation}
+                    </div>
+                    {replayDetail.divergenceAnalysis.sequenceDifferences && replayDetail.divergenceAnalysis.sequenceDifferences.length > 0 && (
+                      <div className="mt-2 text-[11px] space-y-1 bg-black/30 p-2.5 rounded border border-white/5">
+                        <span className="text-slate-400 font-bold block">Divergence Sequence Trace:</span>
+                        {replayDetail.divergenceAnalysis.sequenceDifferences.map((diff, idx) => (
+                          <div key={idx} className="text-amber-400/90 flex items-center gap-1.5">
+                            <span>•</span>
+                            <span>{diff}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {replayDetail.session.errorMessage && (
                   <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-mono">

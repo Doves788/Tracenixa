@@ -92,6 +92,19 @@ export interface ReplayStepComparison {
   diffNote: string;
 }
 
+export interface DivergenceAnalysis {
+  diverged: boolean;
+  similarityScore: number;
+  severity: 'NONE' | 'LOW' | 'MEDIUM' | 'CRITICAL';
+  firstDivergenceStep?: number;
+  rootCauseCategory: string;
+  explanation: string;
+  sequenceDifferences: string[];
+  matchedSteps: number;
+  divergedSteps: number;
+  totalSteps: number;
+}
+
 export interface ReplaySession {
   id: string;
   projectId: string;
@@ -102,6 +115,9 @@ export interface ReplaySession {
   originalDurationMs: number;
   replayDurationMs: number;
   stepsCount: number;
+  similarityScore?: number;
+  divergenceSeverity?: 'NONE' | 'LOW' | 'MEDIUM' | 'CRITICAL';
+  rootCauseCategory?: string;
   diffSummary?: string;
   errorMessage?: string;
   createdAt: string;
@@ -110,6 +126,7 @@ export interface ReplaySession {
 
 export interface ReplayDetail {
   session: ReplaySession;
+  divergenceAnalysis?: DivergenceAnalysis;
   stepComparisons: ReplayStepComparison[];
 }
 

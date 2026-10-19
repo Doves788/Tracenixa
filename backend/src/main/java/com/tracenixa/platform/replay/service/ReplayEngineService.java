@@ -1,6 +1,7 @@
 package com.tracenixa.platform.replay.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tracenixa.platform.agent.service.CustomerSupportAgent;
 import com.tracenixa.platform.agent.service.CustomerSupportAgent.AgentExecutionResult;
@@ -9,6 +10,8 @@ import com.tracenixa.platform.fault.model.FaultConfig;
 import com.tracenixa.platform.kafka.producer.EventPublisher;
 import com.tracenixa.platform.project.model.Project;
 import com.tracenixa.platform.project.repository.ProjectRepository;
+import com.tracenixa.platform.replay.divergence.ExecutionDivergenceDetector;
+import com.tracenixa.platform.replay.divergence.ExecutionDivergenceDetector.DivergenceResult;
 import com.tracenixa.platform.replay.dto.ReplayDtos.*;
 import com.tracenixa.platform.replay.model.RecordedEvent;
 import com.tracenixa.platform.replay.model.ReplaySession;
@@ -42,6 +45,7 @@ public class ReplayEngineService {
     private final ProjectRepository projectRepository;
     private final CustomerSupportAgent agent;
     private final SandboxToolAdapter sandboxAdapter;
+    private final ExecutionDivergenceDetector divergenceDetector;
     private final EventPublisher eventPublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -84,7 +88,7 @@ public class ReplayEngineService {
                 faultConfigJson
         );
 
-        // Execute async processing
+        // Execute processing
         executeReplaySession(session.getId());
 
         return toSessionResponse(session);
@@ -120,14 +124,13 @@ public class ReplayEngineService {
             if ("FAULT_INJECTION".equals(session.getReplayMode()) && faultConfig != null) {
                 try {
                     FaultContext.setActiveFault(faultConfig);
-                    // In fault injection replay, simulate unhandled failure (0 retries) or bounded retries based on config
                     int retries = faultConfig.getFailureRatePercentage() != null && faultConfig.getFailureRatePercentage() < 100 ? 1 : 0;
                     result = agent.runWorkflow(session.getProject().getId(), prompt, retries);
                 } finally {
                     FaultContext.clear();
                 }
             } else if ("RECORDED".equals(session.getReplayMode())) {
-                // Register recorded events into sandbox adapter
+                // Register recorded events into sandbox adapter for 100% deterministic replay
                 sandboxAdapter.registerRecordedEvents(session.getId(), originalEvents);
                 try {
                     result = agent.runWorkflow(session.getProject().getId(), prompt, 1);
@@ -142,9 +145,9 @@ public class ReplayEngineService {
             Instant endReplay = Instant.now();
             long replayDuration = Math.max(1, endReplay.toEpochMilli() - startReplay.toEpochMilli());
 
-            // Build step comparison between original spans and replayed spans
+            // Build formal execution divergence analysis between original and replayed spans
             List<Span> replayedSpans = spanRepository.findByTraceIdOrderByStartTimeAsc(result.getTraceId());
-            List<ReplayStepComparison> comparisons = buildStepComparisons(
+            DivergenceResult divResult = divergenceDetector.analyze(
                     session.getReplayMode(),
                     originalSpans,
                     replayedSpans,
@@ -153,8 +156,13 @@ public class ReplayEngineService {
 
             session.setReplayedTraceId(result.getTraceId());
             session.setReplayDurationMs(replayDuration);
-            session.setStepsCount(comparisons.size());
-            session.setDiffSummary(objectMapper.writeValueAsString(comparisons));
+            session.setStepsCount(divResult.getStepComparisons().size());
+
+            // Store divergence analysis & step comparisons in diffSummary
+            Map<String, Object> diffData = new HashMap<>();
+            diffData.put("divergenceAnalysis", divResult.getAnalysis());
+            diffData.put("stepComparisons", divResult.getStepComparisons());
+            session.setDiffSummary(objectMapper.writeValueAsString(diffData));
             session.setCompletedAt(endReplay);
 
             if ("ERROR".equals(result.getStatus()) && !"FAULT_INJECTION".equals(session.getReplayMode())) {
@@ -165,7 +173,8 @@ public class ReplayEngineService {
             }
 
             replaySessionRepository.save(session);
-            log.info("Replay session {} completed successfully with mode {}", sessionId, session.getReplayMode());
+            log.info("Replay session {} completed successfully with mode {} (Similarity: {})",
+                    sessionId, session.getReplayMode(), divResult.getAnalysis().getSimilarityScore());
 
         } catch (Exception e) {
             log.error("Replay session {} failed: {}", sessionId, e.getMessage(), e);
@@ -174,63 +183,6 @@ public class ReplayEngineService {
             session.setCompletedAt(Instant.now());
             replaySessionRepository.save(session);
         }
-    }
-
-    private List<ReplayStepComparison> buildStepComparisons(
-            String mode,
-            List<Span> originalSpans,
-            List<Span> replayedSpans,
-            FaultConfig faultConfig
-    ) {
-        List<ReplayStepComparison> list = new ArrayList<>();
-        int maxSize = Math.max(originalSpans.size(), replayedSpans.size());
-
-        for (int i = 0; i < maxSize; i++) {
-            Span orig = i < originalSpans.size() ? originalSpans.get(i) : null;
-            Span rep = i < replayedSpans.size() ? replayedSpans.get(i) : null;
-
-            String opName = rep != null ? rep.getOperationName() : (orig != null ? orig.getOperationName() : "step-" + (i + 1));
-            String kind = rep != null ? rep.getSpanKind() : (orig != null ? orig.getSpanKind() : "SPAN");
-
-            String origIn = orig != null ? orig.getInputPayload() : null;
-            String origOut = orig != null ? orig.getOutputPayload() : null;
-            String repIn = rep != null ? rep.getInputPayload() : null;
-            String repOut = rep != null ? rep.getOutputPayload() : null;
-
-            Long origDur = orig != null ? orig.getDurationMs() : 0L;
-            Long repDur = rep != null ? rep.getDurationMs() : 0L;
-
-            boolean match = Objects.equals(origOut, repOut) || (orig != null && rep != null && orig.getStatus().equals(rep.getStatus()));
-            String stepStatus = "MATCHED";
-            String note = "Execution step matched original trace.";
-
-            if ("FAULT_INJECTION".equals(mode) && faultConfig != null &&
-                    (faultConfig.getTargetTool() == null || opName.contains(faultConfig.getTargetTool()))) {
-                stepStatus = "INJECTED_FAULT";
-                note = "Controlled fault injected (" + faultConfig.getFaultType() + "). Tool handled according to resilience policy.";
-                match = false;
-            } else if (!match) {
-                stepStatus = "DIVERGED";
-                note = "Payload or duration diverged from recorded baseline.";
-            }
-
-            list.add(ReplayStepComparison.builder()
-                    .stepOrder(i + 1)
-                    .operationName(opName)
-                    .eventType(kind)
-                    .originalInput(origIn)
-                    .originalOutput(origOut)
-                    .replayedInput(repIn)
-                    .replayedOutput(repOut)
-                    .originalDurationMs(origDur)
-                    .replayedDurationMs(repDur)
-                    .match(match)
-                    .status(stepStatus)
-                    .diffNote(note)
-                    .build());
-        }
-
-        return list;
     }
 
     public Page<ReplaySessionResponse> listReplaySessions(String projectId, int page, int size) {
@@ -244,14 +196,25 @@ public class ReplayEngineService {
                 .orElseThrow(() -> new IllegalArgumentException("Replay session not found: " + sessionId));
 
         List<ReplayStepComparison> comparisons = Collections.emptyList();
+        DivergenceAnalysis divergenceAnalysis = null;
+
         if (session.getDiffSummary() != null && !session.getDiffSummary().isBlank()) {
             try {
-                comparisons = objectMapper.readValue(session.getDiffSummary(), new TypeReference<List<ReplayStepComparison>>() {});
+                JsonNode root = objectMapper.readTree(session.getDiffSummary());
+                if (root.isObject() && root.has("stepComparisons")) {
+                    comparisons = objectMapper.convertValue(root.get("stepComparisons"), new TypeReference<List<ReplayStepComparison>>() {});
+                    if (root.has("divergenceAnalysis")) {
+                        divergenceAnalysis = objectMapper.convertValue(root.get("divergenceAnalysis"), DivergenceAnalysis.class);
+                    }
+                } else if (root.isArray()) {
+                    comparisons = objectMapper.convertValue(root, new TypeReference<List<ReplayStepComparison>>() {});
+                }
             } catch (Exception ignored) {}
         }
 
         return ReplayDetailResponse.builder()
                 .session(toSessionResponse(session))
+                .divergenceAnalysis(divergenceAnalysis)
                 .stepComparisons(comparisons)
                 .build();
     }
@@ -269,6 +232,22 @@ public class ReplayEngineService {
     }
 
     private ReplaySessionResponse toSessionResponse(ReplaySession s) {
+        Double similarity = null;
+        String severity = null;
+        String rootCause = null;
+
+        if (s.getDiffSummary() != null && !s.getDiffSummary().isBlank()) {
+            try {
+                JsonNode root = objectMapper.readTree(s.getDiffSummary());
+                if (root.isObject() && root.has("divergenceAnalysis")) {
+                    JsonNode div = root.get("divergenceAnalysis");
+                    if (div.has("similarityScore")) similarity = div.get("similarityScore").asDouble();
+                    if (div.has("severity")) severity = div.get("severity").asText();
+                    if (div.has("rootCauseCategory")) rootCause = div.get("rootCauseCategory").asText();
+                }
+            } catch (Exception ignored) {}
+        }
+
         return ReplaySessionResponse.builder()
                 .id(s.getId())
                 .projectId(s.getProject().getId())
@@ -279,6 +258,9 @@ public class ReplayEngineService {
                 .originalDurationMs(s.getOriginalDurationMs())
                 .replayDurationMs(s.getReplayDurationMs())
                 .stepsCount(s.getStepsCount())
+                .similarityScore(similarity != null ? similarity : 1.0)
+                .divergenceSeverity(severity != null ? severity : "NONE")
+                .rootCauseCategory(rootCause != null ? rootCause : "NONE")
                 .diffSummary(s.getDiffSummary())
                 .errorMessage(s.getErrorMessage())
                 .createdAt(s.getCreatedAt())
